@@ -1,0 +1,74 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_IMAGE_FRONTEND = "truefans-frontend"
+        DOCKER_IMAGE_BACKEND = "truefans-backend"
+        REGISTRY_USER = "godparticle1" 
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build Images') {
+            steps {
+                script {
+                    echo 'Building Frontend Image...'
+                    sh "docker build -t ${DOCKER_IMAGE_FRONTEND}:latest ."
+                    
+                    echo 'Building Backend Image...'
+                    sh "cd backend && docker build -t ${DOCKER_IMAGE_BACKEND}:latest ."
+                }
+            }
+        }
+
+        stage('Test') {
+            steps {
+                echo 'Running unit tests...'
+                // sh "npm test" // Uncomment if you have tests
+            }
+        }
+
+        stage('Push Images') {
+            steps {
+                script {
+                    echo 'Pushing Images to Docker Hub...'
+                    withCredentials([usernamePassword(credentialsId: 'docker-hub-credentials', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
+                        sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
+                        sh "docker tag ${DOCKER_IMAGE_FRONTEND}:latest ${REGISTRY_USER}/${DOCKER_IMAGE_FRONTEND}:latest"
+                        sh "docker push ${REGISTRY_USER}/${DOCKER_IMAGE_FRONTEND}:latest"
+                        
+                        sh "docker tag ${DOCKER_IMAGE_BACKEND}:latest ${REGISTRY_USER}/${DOCKER_IMAGE_BACKEND}:latest"
+                        sh "docker push ${REGISTRY_USER}/${DOCKER_IMAGE_BACKEND}:latest"
+                    }
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                echo 'Deploying application...'
+                script {
+                    sh "docker-compose pull"
+                    sh "docker-compose up -d"
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo 'Pipeline finished.'
+        }
+        success {
+            echo 'Deployment successful!'
+        }
+        failure {
+            echo 'Deployment failed. Please check the logs.'
+        }
+    }
+}
